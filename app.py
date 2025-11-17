@@ -1,4 +1,5 @@
 import streamlit as st
+from src.utils import get_stock_data, calculate_moving_averages, plot_price_with_ma
 from dataclasses import dataclass
 from typing import Optional, List
 
@@ -135,7 +136,78 @@ with st.form("stock_data_form"):
             )
 
 
+# Display form data when submitted
+if submitted:
+    st.success("✅ Form submitted successfully!")
+
+    # Validation
+    if not config.ticker:
+        st.error("❌ Please enter a valid ticker symbol!")
+    elif config.fetch_method == "Date Range" and (config.start_date is None or config.end_date is None):
+        st.error("❌ Please select both start and end dates!")
+    elif config.fetch_method == "Date Range" and config.start_date >= config.end_date:
+        st.error("❌ Start date must be before end date!")
+    else:
+        # Show loading spinner while fetching data
+        with st.spinner(f"📊 Fetching data for {config.ticker}..."):
+            try:
+                # Fetch stock data
+                if config.fetch_method == "Period":
+                    df = get_stock_data(
+                        config.ticker, period=config.period, interval=config.interval)
+                else:
+                    df = get_stock_data(config.ticker, start_date=config.start_date,
+                                        end_date=config.end_date, interval=config.interval)
+
+                if df.empty:
+                    st.error(
+                        f"❌ No data found for ticker '{config.ticker}'. Please check the ticker symbol and try again.")
+                else:
+                    # Display data info
+                    st.success(
+                        f"✅ Successfully fetched {len(df)} data points!")
+
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Data Points", len(df))
+                    with col2:
+                        st.metric("Start Date",
+                                  df.index[0].strftime('%Y-%m-%d'))
+                    with col3:
+                        st.metric(
+                            "End Date", df.index[-1].strftime('%Y-%m-%d'))
+
+                    # Calculate moving averages
+                    if config.ma_windows:
+                        with st.spinner("📈 Calculating moving averages..."):
+                            df_with_ma = calculate_moving_averages(
+                                df, windows=config.ma_windows, price_column='Close')
+                            ma_columns = [f'MA{w}' for w in config.ma_windows]
+                    else:
+                        df_with_ma = df
+                        ma_columns = []
+
+                    # Plot candlestick chart
+                    st.subheader(f"📊 {config.ticker} Candlestick Chart")
+
+                    with st.spinner("🎨 Rendering chart..."):
+                        fig = plot_price_with_ma(
+                            df_with_ma,
+                            config.ticker,
+                            price_column='Close',
+                            ma_columns=ma_columns,
+                            log_scale=config.log_scale
+                        )
+                        st.plotly_chart(fig, width='stretch')
+
+                    # Show data preview
+                    with st.expander("📋 View Data Table"):
+                        st.dataframe(df_with_ma.tail(20), width='stretch')
+
+            except Exception as e:
+                st.error(f"❌ An error occurred: {str(e)}")
+                st.exception(e)
+
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Built with Streamlit and yfinance")
-
