@@ -1,5 +1,7 @@
 import yfinance as yf
-import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
 
 
 def get_stock_data(ticker, start_date=None, end_date=None, period='1mo', interval='1d'):
@@ -70,45 +72,79 @@ def calculate_moving_averages(df, windows=[10, 50, 100], price_column='Close'):
     return df_copy
 
 
-def plot_price_with_ma(df, ticker, price_column='Close', ma_columns=['MA10', 'MA50', 'MA100']):
+def plot_price_with_ma(df, ticker, price_column='Close', ma_columns=['MA10', 'MA50', 'MA100'], log_scale=False):
     """
-    Plot stock price with moving averages.
+    Plot candlestick chart with moving averages using Plotly.
 
     Parameters:
     -----------
     df : pd.DataFrame
-        DataFrame with stock data and moving averages
+        DataFrame with stock data (must have Open, High, Low, Close columns)
     ticker : str
         Stock ticker symbol for the title
     price_column : str
         Name of the price column to plot (default: 'Close')
     ma_columns : list
         List of MA column names to plot (default: ['MA10', 'MA50', 'MA100'])
+    log_scale : bool
+        If True, apply logarithmic scaling to the y-axis (default: False)
 
     Returns:
     --------
-    matplotlib.figure.Figure
-        The created figure object
+    plotly.graph_objects.Figure
+        The created interactive figure object
     """
-    fig, ax = plt.subplots(figsize=(14, 7))
+    fig = go.Figure()
 
-    # Plot close price
-    ax.plot(df.index, df[price_column],
-            label=f'{ticker} Price', linewidth=2, color='black')
+    # Apply log transformation if requested
+    if log_scale:
+        df_plot = df.copy()
+        df_plot['Open'] = np.log10(df['Open'])
+        df_plot['High'] = np.log10(df['High'])
+        df_plot['Low'] = np.log10(df['Low'])
+        df_plot['Close'] = np.log10(df['Close'])
+        for ma_col in ma_columns:
+            if ma_col in df.columns:
+                df_plot[ma_col] = np.log10(df[ma_col])
+        ylabel = 'Price (log10 $)'
+    else:
+        df_plot = df
+        ylabel = 'Price ($)'
 
-    # Plot moving averages with different colors
-    colors = ['blue', 'orange', 'green']
+    fig.add_trace(go.Candlestick(
+        x=df_plot.index,
+        open=df_plot['Open'],
+        high=df_plot['High'],
+        low=df_plot['Low'],
+        close=df_plot['Close'],
+        name=ticker,
+        increasing_line_color='#26a69a',
+        decreasing_line_color='#ef5350',
+        increasing_fillcolor='#26a69a',
+        decreasing_fillcolor='#ef5350'
+    ))
+
+    colors = ['blue', 'orange', 'purple']
     for i, ma_col in enumerate(ma_columns):
-        if ma_col in df.columns:
-            ax.plot(df.index, df[ma_col], label=ma_col, linewidth=1.5,
-                    color=colors[i % len(colors)], alpha=0.8)
+        if ma_col in df_plot.columns:
+            fig.add_trace(go.Scatter(
+                x=df_plot.index,
+                y=df_plot[ma_col],
+                name=ma_col,
+                line=dict(color=colors[i % len(colors)], width=2),
+                mode='lines',
+                opacity=0.7
+            ))
 
-    ax.set_title(f'{ticker} Stock Price with Moving Averages',
-                 fontsize=16, fontweight='bold')
-    ax.set_xlabel('Date', fontsize=12)
-    ax.set_ylabel('Price ($)', fontsize=12)
-    ax.legend(loc='best', fontsize=10)
-    ax.grid(True, alpha=0.3)
+    fig.update_layout(
+        title=f'{ticker} Candlestick Chart with Moving Averages{"(Log Scale)" if log_scale else ""}',
+        xaxis_title='Date',
+        yaxis_title=ylabel,
+        hovermode='x unified',
+        template='plotly_white',
+        height=600,
+        xaxis_rangeslider_visible=False,
+        showlegend=True
+    )
 
-    plt.tight_layout()
     return fig
